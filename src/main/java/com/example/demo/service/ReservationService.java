@@ -1,14 +1,13 @@
 package com.example.demo.service;
 
 import com.example.demo.dto.ReservationResponseDto;
-import com.example.demo.entity.Item;
-import com.example.demo.entity.RentalLog;
-import com.example.demo.entity.Reservation;
-import com.example.demo.entity.User;
+import com.example.demo.entity.*;
 import com.example.demo.exception.ReservationConflictException;
 import com.example.demo.repository.ItemRepository;
 import com.example.demo.repository.ReservationRepository;
 import com.example.demo.repository.UserRepository;
+import com.querydsl.core.BooleanBuilder;
+import com.querydsl.jpa.impl.JPAQueryFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,15 +22,18 @@ public class ReservationService {
     private final ItemRepository itemRepository;
     private final UserRepository userRepository;
     private final RentalLogService rentalLogService;
+    private final JPAQueryFactory jpaQueryFactory;
 
     public ReservationService(ReservationRepository reservationRepository,
                               ItemRepository itemRepository,
                               UserRepository userRepository,
-                              RentalLogService rentalLogService) {
+                              RentalLogService rentalLogService,
+                              JPAQueryFactory jpaQueryFactory) {
         this.reservationRepository = reservationRepository;
         this.itemRepository = itemRepository;
         this.userRepository = userRepository;
         this.rentalLogService = rentalLogService;
+        this.jpaQueryFactory = jpaQueryFactory;
     }
 
     // TODO: 1. 트랜잭션 이해
@@ -83,16 +85,25 @@ public class ReservationService {
     }
 
     public List<Reservation> searchReservations(Long userId, Long itemId) {
+        QReservation qReservation = QReservation.reservation;
+        QUser qUser = QUser.user;
+        QItem qItem = QItem.item;
 
-        if (userId != null && itemId != null) {
-            return reservationRepository.findByUserIdAndItemId(userId, itemId);
-        } else if (userId != null) {
-            return reservationRepository.findByUserId(userId);
-        } else if (itemId != null) {
-            return reservationRepository.findByItemId(itemId);
-        } else {
-            return reservationRepository.findAll();
+        BooleanBuilder builder = new BooleanBuilder();
+
+        if (userId != null) {
+            builder.and(qReservation.user.id.eq(userId));
         }
+        if (itemId != null) {
+            builder.and(qReservation.item.id.eq(itemId));
+        }
+
+        return jpaQueryFactory
+                .selectFrom(qReservation)
+                .leftJoin(qReservation.user, qUser).fetchJoin()
+                .leftJoin(qReservation.item, qItem).fetchJoin()
+                .where(builder)
+                .fetch();
     }
 
     private List<ReservationResponseDto> convertToDto(List<Reservation> reservations) {
